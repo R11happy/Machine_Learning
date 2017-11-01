@@ -1,3 +1,4 @@
+#coding=utf-8
 # A dictionary of movie critics and their ratings of a small
 # set of movies
 critics = {
@@ -107,7 +108,6 @@ def getRecommendations(prefs, person, similarity=sim_pearson):
     rankings.reverse()
     return rankings
 
-print('Recommand the movies:'+str(getRecommendations(critics, 'Toby', similarity=sim_distance)))
 
 print('Pearson correlation coefficient: '+str(sim_pearson(critics, 'Lisa Rose', 'Gene Seymour')))
 
@@ -120,7 +120,74 @@ def transformPrefs(prefs):
             result[item][person] = prefs[person][item]
     return result
 
+
 movies = transformPrefs(critics)
 print('get Similarity between items:' + str(topMatches(movies, 'Superman Returns')))
 
+
+# Create a dictionary of items showing which other items they
+# are most similar to.
 def calculateSimilarItems(prefs, n=10):
+    result = {}
+    # Invert the preference matrix to be item-centric
+    itemPrefs=transformPrefs(prefs)
+    c=0
+    for item in itemPrefs:
+    # Status updates for large datasets
+        c+=1
+        if c%100 == 0: print("%d / %d" %(c, len(itemPrefs)))
+    # Find the most similar items to this one
+        scores = topMatches(itemPrefs, item, n=n, similarity=sim_distance)
+        result[item] = scores
+    return result
+
+print(str(calculateSimilarItems(critics)))
+
+# 根据物品相似度进行推荐
+def getRecommendedItems(prefs, itemMatch, user):
+    userRating = prefs[user]
+    scores = {}
+    totalSim = {}
+    # Loop over items rated by this user
+    for(item, rating) in userRating.items():
+        # Loop over items similar to this one
+        for(similarity, item2) in itemMatch[item]:
+            # Ignore if this user has already rated this item
+            if item2 in userRating: continue
+            # Weighted sum of rating times similarity
+            scores.setdefault(item2, 0)
+            scores[item2] += similarity*rating
+            # Sum of all the similarities
+            totalSim.setdefault(item2,0)
+            totalSim[item2] += similarity
+    # Divide each total score by total weighting to get an average
+    rankings = [(score/totalSim[item],item) for item, score in scores.items()]
+
+    rankings.sort()
+    rankings.reverse()
+    return rankings
+
+print('为Toby提供基于用户的推荐'+str(getRecommendations(critics, 'Toby', similarity=sim_distance)))
+itemsim = calculateSimilarItems(critics)
+print("为Toby提供基于物品的推荐"+str(getRecommendedItems(critics, itemsim, 'Toby')))
+
+def loadMovieLens(path='./data/ml-100k'):
+    # 获取影片标题
+    movies = {}
+    for line in open(path+'/u.item'):
+        (id, title) = line.split('|')[0:2]
+        movies[id] = title
+    # 加载数据
+    prefs = {}
+    for line in open(path+'/u.data'):
+        (user, movieid, rating, ts) = line.split('\t')
+        prefs.setdefault(user, {})
+        prefs[user][movies[movieid]] = float(rating)
+    return prefs
+
+prefs = loadMovieLens()
+print("其中一位用户的评分情况："+str(prefs['87']))
+
+print("基于用户——电影推荐:\n"+str(getRecommendations(prefs, '87')[0:30]))
+itemsim = calculateSimilarItems(prefs, n=50)
+print("\n基于物品——电影推荐:\n"+str(getRecommendedItems(prefs,itemsim, '87')[0:30]))
