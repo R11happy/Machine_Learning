@@ -75,8 +75,8 @@ def hcluster(rows, distance=pearson):
         clust.append(newcluster)
     return clust[0]
 
-blognames, words, data = readfile('./data/blogdata.txt')
-clust=hcluster(data)
+# blognames, words, data = readfile('./data/blogdata.txt')
+# clust=hcluster(data)
 
 # 递归遍历聚类树，并将其以类似文件系统层级结构的形式打印出来
 def printclust(clust, labels=None, n=0):
@@ -94,7 +94,7 @@ def printclust(clust, labels=None, n=0):
     if clust.left != None: printclust(clust.left, labels=labels, n=n+1)
     if clust.right != None: printclust(clust.right, labels=labels, n=n+1)
 
-printclust(clust, labels=blognames)
+# printclust(clust, labels=blognames)
 
 # 返回给定聚类的总体高度
 def getheight(clust):
@@ -169,6 +169,131 @@ def rotatematrix(data):
         newdata.append(newrow)
     return newdata
 
-rdata = rotatematrix(data)
-wordclust = hcluster(rdata)
-drawdendrogram(wordclust, lables=words, jpeg='wordclust.jpg')
+# rdata = rotatematrix(data)
+# wordclust = hcluster(rdata)
+# drawdendrogram(wordclust, lables=words, jpeg='wordclust.jpg')
+
+import random
+
+# K-Mean聚类算法，这里k指的是聚类数
+def kcluster(rows, distance = pearson, k=4):
+    # 确定每个点的最小值和最大值
+    ranges = [(min([row[i] for row in rows]), max(row[i] for row in rows)) for
+              i in range(len(rows[0]))]
+
+    # 随机创建k个中心点
+    clusters = [[random.random()*(ranges[i][1] - ranges[i][0]) + ranges[i][0]
+                 for i in range(len(rows[0]))] for j in range(k)]
+
+    lastmatches = None
+    for t in range(100):
+        print('Iteration %d' %t)
+        bestmatches = [[] for i in range(k)]
+
+        # 在每一行中寻找距离最近的中心点
+        for j in range(len(rows)):
+            row = rows[j]
+            bestmatch = 0
+            for i in range(k):
+                d = distance(clusters[i], row)
+                if d < distance(clusters[bestmatch], row): bestmatch = i
+            bestmatches[bestmatch].append(j)
+
+        # 如果结果与上一次相同， 则整个过程结束
+        if bestmatches == lastmatches: break
+        lastmatches = bestmatches
+
+        # 把中心点移到其所有成员的平均位置处
+        for i in range(k):
+            avgs = [0.0]*len(rows[0])
+            if len(bestmatches[i] )> 0:
+                for rowid in bestmatches[i]:
+                    for m in range(len(rows[rowid])):
+                        avgs[m] += rows[rowid][m]
+                for j in range(len(avgs)):
+                    avgs[j] /= len(bestmatches[i])
+                clusters[i] = avgs
+    return bestmatches
+
+# kclust = kcluster(data, k=10)
+#
+# print("kclust[0]:"+ str([blognames[r] for r in kclust[0]]))
+# print("kclust[1]:"+ str([blognames[r] for r in kclust[1]]))
+
+# 交集与并集的比率
+# 1.0 代表不存在同时喜欢两件物品的人
+# 0.0 代表所有人都同时喜欢两个向量中的物品
+def tanimoto(v1, v2):
+    c1, c2, shr = 0,0,0
+
+    for i in range(len(v1)):
+        if(v1[i] != 0): c1 += 1 # 出现在v1中
+        if(v2[i] != 0): c2 += 1 # 出现在v2中
+        if(v1[i] != 0 and v2[i] != 0): shr += 1 # 两个向量中都出现
+
+    return 1.0 - (float(shr)/(c1+c2-shr))
+
+# wants,people,data=readfile('./data/zebo.txt')
+# clust=hcluster(data, distance=tanimoto)
+# drawdendrogram(clust, wants)
+
+# 绘制一张图，来显示各数据项之间的远近
+# 函数接收一个数据向量作为参数， 并返回一个包含X坐标和Y坐标的向量
+def scaledown(data, distance=pearson, rate=0.01 ):
+    n = len(data)
+
+    # 每一对数据项之间的真实距离
+    realdist = [[distance(data[i], data[j]) for j in range(n)] for i in range(0,n)]
+
+    outersum = 0.0
+    # 随机初始化结点在二维空间中的起始位置
+    loc = [[random.random(), random.random()] for i in range(n)]
+    fakedist = [[0.0 for j in range(n)] for i in range(n)]
+
+    lasterror = None
+    for m in range(0,1000):
+        # 寻找投影后的距离
+        for i in range(n):
+            for j in range(n):
+                fakedist[i][j] = sqrt(sum([pow(loc[i][x] - loc[j][x],2) for x in range(len(loc[i]))]))
+
+        # 移动结点
+        grad = [[0.0, 0.0] for i in range(n)]
+
+        totalerror = 0
+        for k in range(n):
+            for j in range(n):
+                if j==k: continue
+                # 误差值等于目标距离与当前距离之间差值的百分比
+                errorterm = (fakedist[j][k] - realdist[j][k])/realdist[j][k]
+
+                # 每一个结点都需要根据误差的多少，按比例移离或移向其他结点
+                grad[k][0] += ((loc[k][0] - loc[j][0])/fakedist[j][k])*errorterm
+                grad[k][1] += ((loc[k][1] - loc[j][1])/fakedist[j][k])*errorterm
+
+                # 记录总的误差值
+                totalerror += abs(errorterm)
+        print(totalerror)
+
+        # 如果结点移动之后的情况变得更糟， 则程序结束
+        if(lasterror and lasterror<totalerror): break
+        lasterror = totalerror
+
+        # 根据rate参数与grad值相乘的结果，移动每一个结点
+        for k in range(n):
+            loc[k][0] -= rate*grad[k][0]
+            loc[k][1] -= rate*grad[k][1]
+    return loc
+
+def draw2d(data, labels, jpeg = 'mds2d.jpg'):
+    img = Image.new('RGB', (2000, 2000), (255,255,255))
+    draw = ImageDraw.Draw(img)
+    for i in range(len(data)):
+        x = (data[i][0]+0.5)*1000
+        y = (data[i][1]+0.5)*1000
+        draw.text((x,y), labels[i], (0,0,0))
+    img.save(jpeg, 'JPEG')
+
+blognames,words,data=readfile('./data/blogdata.txt')
+coords=scaledown(data)
+draw2d(coords, blognames, jpeg='blogs2d.jpg')
